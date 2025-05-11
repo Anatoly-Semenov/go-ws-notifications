@@ -9,7 +9,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=1 GOOS=linux go build -a -ldflags "-linkmode external -extldflags '-static' -s -w" -o /app/bin/server ./cmd/server
+RUN go build -o /app/bin/server ./cmd/server
 
 FROM alpine:latest
 
