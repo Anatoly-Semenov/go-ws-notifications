@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/anatoly_dev/go-ws-notifications/config"
 	"github.com/anatoly_dev/go-ws-notifications/pkg/logger"
@@ -57,12 +58,20 @@ func NewServer(cfg *config.Config, wsHandler *WSHandler, logger *logger.Logger) 
 }
 
 func (s *Server) Start() error {
+	// Запуск сервера метрик в отдельной горутине
 	go func() {
 		s.logger.WithField("port", s.metricsServer.Addr).Info("Запуск сервера метрик")
-		if err := s.metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			s.logger.WithError(err).Error("Ошибка запуска сервера метрик")
+		if err := s.metricsServer.ListenAndServe(); err != nil {
+			if err == http.ErrServerClosed {
+				s.logger.Info("Сервер метрик корректно остановлен")
+			} else {
+				s.logger.WithError(err).Error("Ошибка запуска сервера метрик")
+			}
 		}
 	}()
+
+	// Небольшая задержка, чтобы сервер метрик успел запуститься
+	time.Sleep(100 * time.Millisecond)
 
 	s.logger.WithField("port", s.server.Addr).Info("Запуск HTTP сервера")
 
@@ -87,7 +96,7 @@ func (s *Server) Stop(ctx context.Context) error {
 		s.logger.WithError(err).Error("Ошибка остановки HTTP сервера")
 		return err
 	}
-	
+
 	if err := s.metricsServer.Shutdown(ctx); err != nil {
 		s.logger.WithError(err).Error("Ошибка остановки сервера метрик")
 		return err

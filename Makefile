@@ -1,9 +1,10 @@
-.PHONY: build run clean test lint help
+.PHONY: build run clean test lint help kafka
 
 BINDIR := bin
 SERVERBIN := $(BINDIR)/server
 LAUNCHERBIN := $(BINDIR)/launcher
 BINARY := notification-service
+CONFIG_PATH := $(shell pwd)/config
 
 help:
 	@echo "Доступные команды:"
@@ -12,6 +13,7 @@ help:
 	@echo "  make clean      - Очистка бинарных файлов"
 	@echo "  make test       - Запуск тестов"
 	@echo "  make lint       - Проверка кода с помощью golangci-lint"
+	@echo "  make kafka      - Запуск Kafka в Docker для локального тестирования"
 
 build:
 	@echo "Сборка сервиса уведомлений..."
@@ -23,7 +25,8 @@ build:
 
 run: build
 	@echo "Запуск сервиса уведомлений..."
-	@./$(BINARY)
+	@echo "Используемый путь к конфигурации: $(CONFIG_PATH)"
+	@CONFIG_PATH=$(CONFIG_PATH) ./$(BINARY)
 
 clean:
 	@echo "Очистка бинарных файлов..."
@@ -36,4 +39,8 @@ test:
 
 lint:
 	@echo "Проверка кода..."
-	@golangci-lint run 
+	@golangci-lint run
+
+kafka:
+	@echo "Запуск Kafka для локального тестирования..."
+	@docker-compose up -d zookeeper kafka kafka-ui 

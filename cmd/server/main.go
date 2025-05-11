@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -32,10 +34,20 @@ func main() {
 }
 
 func NewApp() *App {
-	cfg, err := config.LoadConfig("./config")
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "./config"
+	}
+
+	fmt.Printf("Загрузка конфигурации из директории: %s\n", configPath)
+
+	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		panic("Ошибка загрузки конфигурации: " + err.Error())
 	}
+
+	fmt.Printf("Загружена конфигурация Kafka: brokers=%v, topic=%s\n",
+		cfg.Kafka.Brokers, cfg.Kafka.Topic)
 
 	appLogger, err := logger.NewLogger("info", false)
 	if err != nil {
@@ -70,6 +82,20 @@ func (a *App) InitializeServices() {
 }
 
 func (a *App) InitializeKafka() error {
+	if len(a.cfg.Kafka.Brokers) == 0 {
+		a.logger.Warn("Не указаны брокеры Kafka в конфигурации")
+		return nil
+	}
+
+	for i, broker := range a.cfg.Kafka.Brokers {
+		if broker == "kafka:9092" && !isDockerEnvironment() {
+			a.logger.WithField("broker", broker).Warn("Обнаружен адрес kafka:9092 вне Docker, заменяем на localhost:9092")
+			a.cfg.Kafka.Brokers[i] = "localhost:9092"
+		}
+	}
+
+	a.logger.WithField("brokers", a.cfg.Kafka.Brokers).Info("Инициализация соединения с Kafka")
+
 	kafkaConfig := &kafka.ConsumerConfig{
 		Brokers:         a.cfg.Kafka.Brokers,
 		GroupID:         a.cfg.Kafka.GroupID,
@@ -79,16 +105,32 @@ func (a *App) InitializeKafka() error {
 	var err error
 	a.kafkaConsumer, err = kafka.NewConsumer(kafkaConfig, a.logger)
 	if err != nil {
-		return err
+		a.logger.WithError(err).Warn("Не удалось подключиться к Kafka, продолжаем без консьюмера")
+		return nil
 	}
 
 	kafkaHandler := application.NewKafkaHandler(a.notificationSvc, a.logger)
 
 	if err := a.kafkaConsumer.Subscribe(a.cfg.Kafka.Topic, kafkaHandler.HandleMessage); err != nil {
-		return err
+		a.logger.WithError(err).Warn("Не удалось подписаться на топик Kafka, продолжаем без консьюмера")
+		a.kafkaConsumer.Close()
+		a.kafkaConsumer = nil
+		return nil
 	}
 
 	return nil
+}
+
+func isDockerEnvironment() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+
+	if data, err := os.ReadFile("/proc/self/cgroup"); err == nil {
+		return strings.Contains(string(data), "docker")
+	}
+
+	return false
 }
 
 func (a *App) StartServer() {

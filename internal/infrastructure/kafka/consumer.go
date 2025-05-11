@@ -38,6 +38,13 @@ func NewConsumer(config *ConsumerConfig, logger *logger.Logger) (*Consumer, erro
 }
 
 func (c *Consumer) Subscribe(topic string, handler func(message []byte) error) error {
+
+	c.logger.WithFields(map[string]interface{}{
+		"brokers": c.config.Brokers,
+		"groupID": c.config.GroupID,
+		"topic":   topic,
+	}).Info("Настройки подключения к Kafka")
+
 	c.reader = kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     c.config.Brokers,
 		Topic:       topic,
@@ -59,21 +66,40 @@ func (c *Consumer) Subscribe(topic string, handler func(message []byte) error) e
 func (c *Consumer) consumeMessages() {
 	defer c.wg.Done()
 
+	reconnectTimer := time.NewTimer(time.Second)
+	defer reconnectTimer.Stop()
+
+	var lastErrorLogged time.Time
+	connectionErrorCount := 0
+
 	for {
 		select {
 		case <-c.ctx.Done():
 			c.logger.Info("Остановка потребителя Kafka")
 			return
+		case <-reconnectTimer.C:
+
 		default:
 			message, err := c.reader.ReadMessage(c.ctx)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					return
 				}
-				c.logger.WithError(err).Error("Ошибка чтения сообщения из Kafka")
-				time.Sleep(time.Second)
-				continue
+
+				now := time.Now()
+
+				if now.Sub(lastErrorLogged) > 30*time.Second {
+					c.logger.WithError(err).Error("Ошибка чтения сообщения из Kafka")
+					lastErrorLogged = now
+					connectionErrorCount++
+				}
+
+				backoffTime := time.Second * time.Duration(min(connectionErrorCount, 10))
+				reconnectTimer.Reset(backoffTime)
+				break
 			}
+
+			connectionErrorCount = 0
 
 			c.logger.WithFields(map[string]interface{}{
 				"topic":     message.Topic,
@@ -86,6 +112,13 @@ func (c *Consumer) consumeMessages() {
 			}
 		}
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (c *Consumer) Close() error {

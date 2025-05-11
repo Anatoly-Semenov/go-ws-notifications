@@ -28,6 +28,8 @@ RUN mkdir -p /app/certs && \
 
 USER appuser
 
+ENV DOCKER_CONTAINER=true
+
 EXPOSE 8080 9090
 
 CMD ["/app/bin/server"] 

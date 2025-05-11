@@ -15,6 +15,7 @@ services:
       - zookeeper
     environment:
       - TZ=UTC
+      - DOCKER_CONTAINER=true
     volumes:
       - ./config:/app/config
       - ./certs:/app/certs
