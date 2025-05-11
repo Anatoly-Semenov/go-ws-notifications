@@ -32,7 +32,7 @@ func main() {
 }
 
 func NewApp() *App {
-	cfg, err := config.LoadConfig("./conf")
+	cfg, err := config.LoadConfig("./config")
 	if err != nil {
 		panic("Ошибка загрузки конфигурации: " + err.Error())
 	}
