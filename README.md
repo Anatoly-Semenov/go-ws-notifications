@@ -1,30 +1,30 @@
 # go-ws-notifications
 
-Высокопроизводительный сервис на Go для отправки уведомлений пользователям через WebSocket в реальном времени.
+High-performance Go service for sending real-time notifications to users via WebSocket.
 
-## Особенности
+## Features
 
-- Получение уведомлений из Kafka (топик 'notifications.web') и отправка их клиентам через WebSocket
-- Аутентификация пользователей
-- TLS шифрование
-- Масштабируемость и высокая производительность
-- Prometheus метрики для мониторинга
-- Контекстуальное логирование с использованием uber-go/zap
-- Валидация данных с помощью go-playground/validator
+- Consumes notifications from Kafka (topic: 'notifications.web') and sends them to clients via WebSocket
+- User authentication
+- TLS encryption
+- Scalable and high-performance
+- Prometheus metrics for monitoring
+- Contextual logging using uber-go/zap
+- Data validation with go-playground/validator
 
-## Архитектура
+## Architecture
 
-Проект реализован с учетом принципов Clean Architecture:
+The project follows the principles of Clean Architecture:
 
-- Domain layer - бизнес-сущности и интерфейсы
-- Application layer - реализация бизнес-логики
-- Infrastructure layer - внешние зависимости:
-  - Kafka для получения уведомлений
-  - WebSocket для отправки клиентам
-  - HTTP для API
-  - Repository для хранения данных
+- Domain layer - business entities and interfaces
+- Application layer - business logic implementation
+- Infrastructure layer - external dependencies:
+  - Kafka for receiving notifications
+  - WebSocket for sending notifications to clients
+  - HTTP for API
+  - Repository for data storage
 
-## Установка
+## Installation
 
 ```bash
 git clone https://github.com/anatoly_dev/go-ws-notifications.git
@@ -32,9 +32,9 @@ cd go-ws-notifications
 go mod download
 ```
 
-## Конфигурация
+## Configuration
 
-Настройки сервиса содержатся в файле `config/config.yaml`. Пример конфигурации:
+Service settings are located in the `config/config.yaml` file. Example configuration:
 
 ```yaml
 server:
@@ -62,28 +62,69 @@ tls:
   key_file: "certs/server.key"
 ```
 
-## Запуск
+## Running the Service
+
+### Local Run with Kafka
 
 ```bash
-go run cmd/server/main.go
+# Start Kafka first
+make kafka
+
+# Then start the service
+make run
 ```
 
+### Run with Docker
 
-## Формат уведомлений
+```bash
+# Start all services including Kafka, Prometheus, Grafana, etc.
+docker-compose up
+```
+
+## Available Endpoints
+
+- WebSocket API: `ws://localhost:8080/ws`
+- Health Check: `http://localhost:8080/health`
+- Prometheus Metrics: `http://localhost:9090/metrics`
+
+When running with Docker, also available:
+- Kafka UI: `http://localhost:8090`
+- Grafana: `http://localhost:3000` (login/password: admin/admin)
+- Prometheus: `http://localhost:9091`
+
+## Project Structure
+
+```
+/cmd
+  /server    - Main application server
+  /launcher  - Launcher for managing the server
+/config      - Application configuration
+/internal    - Internal implementation
+  /application     - Application business logic
+  /domain          - Domain models and interfaces
+  /infrastructure  - Infrastructure implementation
+    /http          - HTTP server
+    /kafka         - Kafka integration
+    /repository    - Data storage
+    /websocket     - WebSocket implementation
+/pkg         - Shared packages
+```
+
+## Notification Format
 
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "user_id": "user123",
   "type": "system",
-  "title": "Новое сообщение",
-  "content": "У вас новое сообщение от администратора",
+  "title": "New Message",
+  "content": "You have a new message from the administrator",
   "is_read": false,
   "created_at": "2024-01-01T12:00:00Z",
   "priority": 3
 }
 ```
 
-## Метрики
+## Metrics
 
-Prometheus метрики доступны по адресу `http://localhost:9090/metrics`
+Prometheus metrics are available at `http://localhost:9090/metrics`

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/spf13/viper"
@@ -41,23 +42,73 @@ type TLSConfig struct {
 	KeyFile  string `mapstructure:"key_file"`
 }
 
-func LoadConfig(path string) (*Config, error) {
-	viper.AddConfigPath(path)
+func LoadConfig(configPath string) (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
+	viper.AddConfigPath(configPath)
 
-	viper.AutomaticEnv()
-
-	err := viper.ReadInConfig()
-	if err != nil {
-		return nil, err
+	if err := viper.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("ошибка чтения файла конфигурации: %w", err)
 	}
 
 	var config Config
-	err = viper.Unmarshal(&config)
-	if err != nil {
+	if err := viper.Unmarshal(&config); err != nil {
+		return nil, fmt.Errorf("ошибка разбора файла конфигурации: %w", err)
+	}
+
+	if err := validateConfig(&config); err != nil {
 		return nil, err
 	}
 
 	return &config, nil
+}
+
+func validateConfig(config *Config) error {
+
+	if len(config.Kafka.Brokers) == 0 {
+		return fmt.Errorf("не указаны адреса брокеров Kafka")
+	}
+
+	if config.Kafka.Topic == "" {
+		return fmt.Errorf("не указан топик Kafka")
+	}
+
+	if config.Server.Port <= 0 {
+		config.Server.Port = 8080
+	}
+
+	if config.Server.MetricsPort <= 0 {
+		config.Server.MetricsPort = 9090
+	}
+
+	if config.Server.ReadTimeout == 0 {
+		config.Server.ReadTimeout = 15 * time.Second
+	}
+
+	if config.Server.WriteTimeout == 0 {
+		config.Server.WriteTimeout = 15 * time.Second
+	}
+
+	if config.WebSocket.ReadBufferSize <= 0 {
+		config.WebSocket.ReadBufferSize = 1024
+	}
+
+	if config.WebSocket.WriteBufferSize <= 0 {
+		config.WebSocket.WriteBufferSize = 1024
+	}
+
+	if config.WebSocket.PongWait == 0 {
+		config.WebSocket.PongWait = 60 * time.Second
+	}
+
+	if config.WebSocket.PingPeriod == 0 {
+
+		config.WebSocket.PingPeriod = (config.WebSocket.PongWait * 9) / 10
+	}
+
+	if config.WebSocket.MaxMessageSize <= 0 {
+		config.WebSocket.MaxMessageSize = 512000
+	}
+
+	return nil
 }

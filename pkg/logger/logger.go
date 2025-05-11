@@ -20,8 +20,15 @@ func NewLogger(level string, isProduction bool) (*Logger, error) {
 	if isProduction {
 		config = zap.NewProductionConfig()
 	} else {
-		config = zap.NewDevelopmentConfig()
+		config = zap.NewProductionConfig()
 		config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		config.OutputPaths = []string{"stdout"}
+		config.EncoderConfig.MessageKey = "M"
+		config.EncoderConfig.CallerKey = "C"
+		config.EncoderConfig.LevelKey = "L"
+		config.EncoderConfig.TimeKey = "T"
+		config.Encoding = "console"
 	}
 
 	config.Level = zap.NewAtomicLevelAt(logLevel)

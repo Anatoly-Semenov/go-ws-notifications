@@ -2,10 +2,10 @@ server:
   port: 8080
   read_timeout: 15s
   write_timeout: 15s
-  metrics_port: 9099
+  metrics_port: 9090
 
 kafka:
-  brokers: ["127.0.0.1:9092"]
+  brokers: ["kafka:9092"]
   topic: "notifications.web"
   group_id: "notification-service"
   auto_offset_reset: "earliest"
