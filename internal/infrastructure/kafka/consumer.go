@@ -1,15 +1,23 @@
 package kafka
 
 import (
+	"context"
+	"errors"
+	"sync"
 	"time"
 
 	"github.com/anatoly_dev/go-ws-notifications/pkg/logger"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/segmentio/kafka-go"
 )
 
 type Consumer struct {
-	consumer *kafka.Consumer
-	logger   *logger.Logger
+	reader  *kafka.Reader
+	logger  *logger.Logger
+	handler func(message []byte) error
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	config  *ConsumerConfig
 }
 
 type ConsumerConfig struct {
@@ -19,63 +27,73 @@ type ConsumerConfig struct {
 }
 
 func NewConsumer(config *ConsumerConfig, logger *logger.Logger) (*Consumer, error) {
-	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers":  config.Brokers[0],
-		"group.id":           config.GroupID,
-		"auto.offset.reset":  config.AutoOffsetReset,
-		"enable.auto.commit": true,
-	})
-
-	if err != nil {
-		return nil, err
-	}
+	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Consumer{
-		consumer: consumer,
-		logger:   logger,
+		logger: logger,
+		ctx:    ctx,
+		cancel: cancel,
+		config: config,
 	}, nil
 }
 
 func (c *Consumer) Subscribe(topic string, handler func(message []byte) error) error {
-	err := c.consumer.SubscribeTopics([]string{topic}, nil)
-	if err != nil {
-		c.logger.WithError(err).Error("Ошибка подписки на топик Kafka")
-		return err
-	}
+	c.reader = kafka.NewReader(kafka.ReaderConfig{
+		Brokers:     c.config.Brokers,
+		Topic:       topic,
+		GroupID:     c.config.GroupID,
+		MinBytes:    10e3, // 10KB
+		MaxBytes:    10e6, // 10MB
+		StartOffset: kafka.FirstOffset,
+	})
 
+	c.handler = handler
 	c.logger.WithField("topic", topic).Info("Подписка на топик Kafka успешно установлена")
 
-	go c.consumeMessages(handler)
+	c.wg.Add(1)
+	go c.consumeMessages()
 
 	return nil
 }
 
-func (c *Consumer) consumeMessages(handler func(message []byte) error) {
-	for {
-		msg, err := c.consumer.ReadMessage(time.Second * 1)
-		if err != nil {
+func (c *Consumer) consumeMessages() {
+	defer c.wg.Done()
 
-			if err.(kafka.Error).Code() == kafka.ErrTimedOut {
+	for {
+		select {
+		case <-c.ctx.Done():
+			c.logger.Info("Остановка потребителя Kafka")
+			return
+		default:
+			message, err := c.reader.ReadMessage(c.ctx)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return
+				}
+				c.logger.WithError(err).Error("Ошибка чтения сообщения из Kafka")
+				time.Sleep(time.Second)
 				continue
 			}
 
-			c.logger.WithError(err).Error("Ошибка чтения сообщения из Kafka")
-			continue
-		}
+			c.logger.WithFields(map[string]interface{}{
+				"topic":     message.Topic,
+				"partition": message.Partition,
+				"offset":    message.Offset,
+			}).Debug("Получено сообщение из Kafka")
 
-		c.logger.WithFields(map[string]interface{}{
-			"topic":     *msg.TopicPartition.Topic,
-			"partition": msg.TopicPartition.Partition,
-			"offset":    msg.TopicPartition.Offset,
-		}).Debug("Получено сообщение из Kafka")
-
-		if err := handler(msg.Value); err != nil {
-			c.logger.WithError(err).Error("Ошибка обработки сообщения из Kafka")
+			if err := c.handler(message.Value); err != nil {
+				c.logger.WithError(err).Error("Ошибка обработки сообщения из Kafka")
+			}
 		}
 	}
 }
 
 func (c *Consumer) Close() error {
-	c.logger.Info("Закрытие соединения с Kafka")
-	return c.consumer.Close()
+	c.cancel()
+	if c.reader != nil {
+		c.reader.Close()
+	}
+	c.wg.Wait()
+	c.logger.Info("Соединение с Kafka закрыто")
+	return nil
 }
